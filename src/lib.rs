@@ -13,7 +13,7 @@ impl Shortcode {
         };
     }
 
-    fn add(
+    pub fn add(
         &mut self,
         name: String,
         callback: fn(Option<String>, Option<HashMap<String, String>>) -> String,
@@ -22,11 +22,11 @@ impl Shortcode {
         return self;
     }
 
-    fn has(&self, name: &str) -> bool {
+    pub fn has(&self, name: &str) -> bool {
         return self.items.contains_key(name);
     }
 
-    fn render(&self, content: String) -> String {
+    pub fn render(&self, content: String) -> String {
         return tokenizer::parse(content)
             .iter()
             .map(|token| match token.tag_name() {
