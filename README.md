@@ -1,4 +1,4 @@
-# WP shortcode parser
+# WP Shortcode Parser
 WordPress shortcode parser written in rust.
 > NB: Currently this crate is not for production use. 
 > If you need to experiment with this, feel free use as local crate.
