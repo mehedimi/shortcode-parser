@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 fn render_raw_nested_child(
     children: &Vec<Token>,
-    shortcodes: &HashMap<String, fn(Option<String>, Option<HashMap<String, String>>) -> String>,
+    shortcodes: &HashMap<String, fn(Option<String>, Option<HashMap<String, Option<String>>>) -> String>,
 ) -> String {
     return children
         .iter()
@@ -20,7 +20,7 @@ fn render_raw_nested_child(
 
 fn render_nested_child(
     children: &Vec<Token>,
-    callback: fn(Option<String>, Option<HashMap<String, String>>) -> String,
+    callback: fn(Option<String>, Option<HashMap<String, Option<String>>>) -> String,
 ) -> String {
     return children
         .iter()
@@ -31,10 +31,16 @@ fn render_nested_child(
         .join("");
 }
 
-fn render_raw_attributes(attrs: &HashMap<String, String>) -> String {
+fn render_raw_attributes(attrs: &HashMap<String, Option<String>>) -> String {
     return attrs
         .iter()
-        .map(|attr| format!("{}=\"{}\"", attr.0, attr.1))
+        .map(|attr| {
+            match attr.1 {
+                Some(attr_value) => {
+                    format!("{}=\"{}\"", attr.0, attr_value)
+                }, None => attr.0.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ");
 }
@@ -42,7 +48,7 @@ fn render_raw_attributes(attrs: &HashMap<String, String>) -> String {
 impl Token {
     pub fn render(
         &self,
-        callback: fn(Option<String>, Option<HashMap<String, String>>) -> String,
+        callback: fn(Option<String>, Option<HashMap<String, Option<String>>>) -> String,
     ) -> String {
         return match self {
             Token::Text { content } => content.to_string(),
@@ -59,7 +65,7 @@ impl Token {
 
     pub fn render_raw(
         self,
-        items: &HashMap<String, fn(Option<String>, Option<HashMap<String, String>>) -> String>,
+        items: &HashMap<String, fn(Option<String>, Option<HashMap<String, Option<String>>>) -> String>,
     ) -> String {
         match self {
             Token::Text { content } => content,

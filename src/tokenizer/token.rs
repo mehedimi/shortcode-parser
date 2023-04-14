@@ -10,11 +10,11 @@ pub enum Token {
     },
     AttributeTag {
         tag: String,
-        attrs: HashMap<String, String>,
+        attrs: HashMap<String, Option<String>>,
     },
     NestedAttributeTag {
         tag: String,
-        attrs: HashMap<String, String>,
+        attrs: HashMap<String, Option<String>>,
         children: Vec<Token>,
     },
     NestedInlineTag {
