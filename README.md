@@ -6,8 +6,16 @@ WordPress shortcode parser written in rust.
 ### Installation
 ```toml
 [dependencies]
-wp_shortcode = {path = "PATH_OF_THE_CRATE"}
+wp_shortcode = { path = "PATH_OF_THE_CRATE" }
 ```
+
+or
+
+```toml
+[dependencies]
+wp_shortcode = { git = "https://github.com/mehedimi/wp-shortcode-rust", branch = "main" }
+```
+
 
 ### Example
 Here is a simple `[audio]` shortcode parsed into html.
@@ -33,7 +41,7 @@ fn main() {
 
     let content = "This is a [audio class=\"audio\"] tag";
 
-    dbg!(shortcode.render(content.to_string()));
+    shortcode.render(content.to_string());
     // Output: This is a <audio class="audio"></audio> tag
 }
 ```
