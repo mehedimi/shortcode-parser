@@ -1,19 +1,19 @@
-# WP Shortcode Parser
-WordPress shortcode parser written in rust.
+# Shortcode Parser
+WordPress flavored shortcode parser written in rust.
 > NB: Currently this crate is not for production use. 
 > If you need to experiment with this, feel free use as local crate.
 
 ### Installation
 ```toml
 [dependencies]
-wp_shortcode = { path = "PATH_OF_THE_CRATE" }
+shortcode_parser = { path = "PATH_OF_THE_CRATE" }
 ```
 
 or
 
 ```toml
 [dependencies]
-wp_shortcode = { git = "https://github.com/mehedimi/wp-shortcode-rust", branch = "main" }
+shortcode_parser = { git = "https://github.com/mehedimi/shortcode-parser", branch = "main" }
 ```
 
 
@@ -21,7 +21,7 @@ wp_shortcode = { git = "https://github.com/mehedimi/wp-shortcode-rust", branch =
 Here is a simple `[audio]` shortcode parsed into html.
 
 ```rust
-use wp_shortcode::Shortcode;
+use shortcode_parser::Shortcode;
 
 fn main() {
     let mut shortcode = Shortcode::new();
