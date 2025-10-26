@@ -133,8 +133,12 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 Some(']') => {
-                    self.tokens
-                        .push(Token::SelfClose(&self.content[self.pos..i]));
+                    let name = &self.content[self.pos..i];
+                    if name.starts_with('/') {
+                        self.tokens.push(Token::CloseTag(&name[1..]));
+                    } else {
+                        self.tokens.push(Token::SelfClose(name));
+                    }
                     self.pos = i + 1;
                     break;
                 }
@@ -253,7 +257,6 @@ mod tests {
             "New [video id=\"123\" autoplay loop name=\"hello world\"] [audio] [video][test]",
         );
         let tokens = parser.parse();
-        dbg!(tokens);
         assert_eq!(tokens.len(), 8);
         assert_eq!(tokens[0], Token::Text("New "));
         assert_eq!(
@@ -274,5 +277,17 @@ mod tests {
         assert_eq!(tokens[5], Token::SelfClose("video"));
         assert_eq!(tokens[6], Token::Text(""));
         assert_eq!(tokens[7], Token::SelfClose("test"));
+    }
+
+    #[test]
+    fn test_parse_enclosed_shortcode() {
+        let mut parser = Parser::new("New [bold]Word[/bold]");
+        let tokens = parser.parse();
+
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens[0], Token::Text("New "));
+        assert_eq!(tokens[1], Token::SelfClose("bold"));
+        assert_eq!(tokens[2], Token::Text("Word"));
+        assert_eq!(tokens[3], Token::CloseTag("bold"));
     }
 }
