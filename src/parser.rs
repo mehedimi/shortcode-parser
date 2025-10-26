@@ -96,14 +96,15 @@ impl<'a> Parser<'a> {
     fn parse_attrs(&mut self, char_iter: &mut Chars) -> Vec<(&'a str, Option<&'a str>)> {
         let mut attrs = vec![];
         let mut i = self.pos;
-
         loop {
             let c = char_iter.next();
 
             match c {
                 Some(']') => {
-                    self.pos += 1;
-                    attrs = self.parse_attr_value(&self.content[self.pos..=i]);
+                    attrs = self.parse_attr_value(&self.content[self.pos..i]);
+                    i += 1;
+                    self.pos = i;
+                    break;
                 }
                 None => break,
                 _ => {
@@ -124,9 +125,12 @@ impl<'a> Parser<'a> {
             match c {
                 Some(' ') => {
                     let name = &self.content[self.pos..i];
+                    // Increment position to skip the space
+                    i += 1;
                     self.pos = i;
                     let attrs = self.parse_attrs(char_iter);
                     self.tokens.push(Token::SelfCloseAttr(name, attrs));
+                    break;
                 }
                 Some(']') => {
                     self.tokens
@@ -143,21 +147,19 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> &Vec<Token<'a>> {
-        if self.content.is_empty() {
-            return self.tokens.as_ref();
-        }
-
         let mut iter = self.content.chars();
         let mut i = 0;
 
         loop {
             let c = iter.next();
-
             match c {
                 Some('[') => {
                     self.tokens.push(Token::Text(&self.content[self.pos..i]));
-                    self.pos = i + 1;
+                    i += 1;
+                    // Set position start of the shortcode tag
+                    self.pos = i;
                     self.parse_shortcode(&mut iter);
+                    i = self.pos;
                 }
                 None => break,
                 _ => {
@@ -182,7 +184,8 @@ mod tests {
     fn test_empty_content() {
         let mut parser = Parser::new("");
         let tokens = parser.parse();
-        assert_eq!(tokens.len(), 0);
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Text(""));
     }
 
     #[test]
@@ -228,7 +231,6 @@ mod tests {
     fn test_parse_self_close_shortcode_with_attrs() {
         let mut parser = Parser::new("New [video id=\"123\" autoplay loop name=\"hello world\"]");
         let tokens = parser.parse();
-
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("New "));
         assert_eq!(
@@ -243,5 +245,34 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn test_parse_multiple_self_close_shortcodes_with_attrs_and_spaces() {
+        let mut parser = Parser::new(
+            "New [video id=\"123\" autoplay loop name=\"hello world\"] [audio] [video][test]",
+        );
+        let tokens = parser.parse();
+        dbg!(tokens);
+        assert_eq!(tokens.len(), 8);
+        assert_eq!(tokens[0], Token::Text("New "));
+        assert_eq!(
+            tokens[1],
+            Token::SelfCloseAttr(
+                "video",
+                vec![
+                    ("id", Some("123")),
+                    ("autoplay", None),
+                    ("loop", None),
+                    ("name", Some("hello world"))
+                ]
+            )
+        );
+        assert_eq!(tokens[2], Token::Text(" "));
+        assert_eq!(tokens[3], Token::SelfClose("audio"));
+        assert_eq!(tokens[4], Token::Text(" "));
+        assert_eq!(tokens[5], Token::SelfClose("video"));
+        assert_eq!(tokens[6], Token::Text(""));
+        assert_eq!(tokens[7], Token::SelfClose("test"));
     }
 }
