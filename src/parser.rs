@@ -134,11 +134,13 @@ impl<'a> Parser<'a> {
                 }
                 Some(']') => {
                     let name = &self.content[self.pos..i];
-                    if name.starts_with('/') {
-                        self.tokens.push(Token::CloseTag(&name[1..]));
+
+                    if let Some(name) = name.strip_prefix('/') {
+                        self.tokens.push(Token::CloseTag(name));
                     } else {
                         self.tokens.push(Token::SelfClose(name));
                     }
+
                     self.pos = i + 1;
                     break;
                 }
@@ -176,7 +178,7 @@ impl<'a> Parser<'a> {
             self.tokens.push(Token::Text(&self.content[self.pos..]));
         }
 
-        self.tokens.as_ref()
+        &self.tokens
     }
 }
 
