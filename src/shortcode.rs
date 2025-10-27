@@ -10,6 +10,12 @@ pub struct Shortcode<'a> {
     items: HashMap<&'a str, ShortcodeFn>,
 }
 
+impl<'a> Default for Shortcode<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Shortcode<'a> {
     pub fn new() -> Self {
         Self {

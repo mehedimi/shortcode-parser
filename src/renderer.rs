@@ -1,5 +1,5 @@
 use crate::code::Code;
-use crate::shortcode::{Shortcode, ShortcodeFn};
+use crate::shortcode::ShortcodeFn;
 use crate::token::Token;
 use std::collections::HashMap;
 
@@ -41,21 +41,7 @@ impl<'a> Renderer<'a> {
     }
 
     pub fn render(&self, codes: &HashMap<&str, ShortcodeFn>) -> String {
-        self.items
-            .iter()
-            .map(|code| {
-                if let Some(tag_name) = code.tag_name() {
-                    if let Some(func) = codes.get(tag_name) {
-                        // func(code.render_raw().as_str(), HashMap::new())
-                        "".to_string()
-                    } else {
-                        return code.render_raw();
-                    }
-                } else {
-                    return code.render_raw();
-                }
-            })
-            .collect()
+        self.items.iter().map(|code| code.render(codes)).collect()
     }
 }
 
