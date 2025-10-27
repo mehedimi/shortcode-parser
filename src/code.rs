@@ -9,8 +9,6 @@ pub enum Code<'a> {
 }
 
 impl<'a> Code<'a> {
-
-
     pub fn render_vec(
         &self,
         shortcodes: &HashMap<&str, ShortcodeFn>,
@@ -38,7 +36,10 @@ impl<'a> Code<'a> {
             Code::Nested(token, children) => {
                 if let Some(code_name) = token.tag_name() {
                     if let Some(code_fn) = shortcodes.get(code_name) {
-                        code_fn(Some(self.render_vec(shortcodes, children).as_str()), token.get_attr_map())
+                        code_fn(
+                            Some(self.render_vec(shortcodes, children).as_str()),
+                            token.get_attr_map(),
+                        )
                     } else {
                         format!(
                             "{}{}{}",
