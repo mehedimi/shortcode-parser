@@ -21,7 +21,7 @@ shortcode_parser = { git = "https://github.com/mehedimi/shortcode-parser", branc
 Here is a simple `[audio]` shortcode parsed into html.
 
 ```rust
-use shortcode_parser::Shortcode;
+use shortcode_parser::shortcode::Shortcode;
 
 fn main() {
     let mut shortcode = Shortcode::new();
