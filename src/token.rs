@@ -22,26 +22,28 @@ impl<'a> Token<'a> {
             Token::SelfClose(name) => format!("[{}]", name),
             Token::CloseTag(name) => format!("[/{}]", name),
             Token::SelfCloseAttr(name, attrs) => {
-                format!("[{} {}]", name, self.get_attr_string().unwrap())
+                format!("[{} {}]", name, Token::attrs_to_string(attrs))
             }
         }
     }
 
+    pub fn attrs_to_string(attrs: &Vec<(&str, Option<&str>)>) -> String {
+        attrs
+            .iter()
+            .map(|(name, value)| {
+                if let Some(v) = value {
+                    format!("{}=\"{}\"", name, v)
+                } else {
+                    name.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     pub fn get_attr_string(&self) -> Option<String> {
         match self {
-            Token::SelfCloseAttr(_, attrs) => Some(
-                attrs
-                    .iter()
-                    .map(|(name, value)| {
-                        if let Some(v) = value {
-                            format!("{}=\"{}\"", name, v)
-                        } else {
-                            name.to_string()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ),
+            Token::SelfCloseAttr(_, attrs) => Some(Token::attrs_to_string(attrs)),
             _ => None,
         }
     }
