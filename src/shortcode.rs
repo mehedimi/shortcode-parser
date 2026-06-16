@@ -214,8 +214,8 @@ mod tests {
         shortcode.add("test", |_, _| "Hello world".to_string());
         shortcode.add("test2", |_, _| "Hello world 2".to_string());
         assert_eq!(
-            shortcode.render("[test] [test2]"),
-            "Hello world Hello world 2"
+            shortcode.render("[test] [test2] hello world"),
+            "Hello world Hello world 2 hello world"
         );
     }
 

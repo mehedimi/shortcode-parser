@@ -41,6 +41,7 @@ impl<'a> Renderer<'a> {
     }
 
     pub fn render(&self, codes: &HashMap<&str, ShortcodeFn>) -> String {
+        dbg!(&self.items);
         self.items.iter().map(|code| code.render(codes)).collect()
     }
 }
