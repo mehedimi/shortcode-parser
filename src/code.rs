@@ -1,6 +1,6 @@
+use crate::attrs::ShortcodeAttrs;
 use crate::shortcode::ShortcodeFn;
 use crate::token::Token;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum Code<'a> {
@@ -9,10 +9,10 @@ pub enum Code<'a> {
 }
 
 impl<'a> Code<'a> {
-    pub fn render_vec(
+    fn render_children(
         &self,
-        shortcodes: &HashMap<&str, ShortcodeFn>,
-        children: &Vec<Code>,
+        shortcodes: &[(&str, ShortcodeFn)],
+        children: &[Code<'a>],
     ) -> String {
         children
             .iter()
@@ -20,12 +20,19 @@ impl<'a> Code<'a> {
             .collect()
     }
 
-    pub fn render(&self, shortcodes: &HashMap<&str, ShortcodeFn>) -> String {
+    fn lookup_handler<'b>(
+        shortcodes: &'b [(&str, ShortcodeFn)],
+        code_name: &str,
+    ) -> Option<&'b ShortcodeFn> {
+        shortcodes.iter().find(|(name, _)| *name == code_name).map(|(_, f)| f)
+    }
+
+    pub fn render(&self, shortcodes: &[(&str, ShortcodeFn)]) -> String {
         match self {
             Code::Inline(token) => {
                 if let Some(code_name) = token.tag_name() {
-                    if let Some(code_fn) = shortcodes.get(code_name) {
-                        code_fn(None, token.get_attr_map())
+                    if let Some(code_fn) = Self::lookup_handler(shortcodes, code_name) {
+                        code_fn(None, ShortcodeAttrs::new(token.attrs_slice()))
                     } else {
                         token.render_raw()
                     }
@@ -35,16 +42,16 @@ impl<'a> Code<'a> {
             }
             Code::Nested(token, children) => {
                 if let Some(code_name) = token.tag_name() {
-                    if let Some(code_fn) = shortcodes.get(code_name) {
+                    if let Some(code_fn) = Self::lookup_handler(shortcodes, code_name) {
                         code_fn(
-                            Some(self.render_vec(shortcodes, children).as_str()),
-                            token.get_attr_map(),
+                            Some(self.render_children(shortcodes, children).as_str()),
+                            ShortcodeAttrs::new(token.attrs_slice()),
                         )
                     } else {
                         format!(
                             "{}{}{}",
                             token.render_raw(),
-                            self.render_vec(shortcodes, children),
+                            self.render_children(shortcodes, children),
                             Token::CloseTag(code_name).render_raw()
                         )
                     }

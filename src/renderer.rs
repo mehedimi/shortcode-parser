@@ -1,14 +1,13 @@
 use crate::code::Code;
 use crate::shortcode::ShortcodeFn;
 use crate::token::Token;
-use std::collections::HashMap;
 
 pub struct Renderer<'a> {
     items: Vec<Code<'a>>,
 }
 
 impl<'a> Renderer<'a> {
-    pub fn new(tokens: &'a Vec<Token<'a>>) -> Self {
+    pub fn new(tokens: &'a [Token<'a>]) -> Self {
         let mut items = vec![];
 
         for token in tokens {
@@ -40,7 +39,7 @@ impl<'a> Renderer<'a> {
         Self { items }
     }
 
-    pub fn render(&self, codes: &HashMap<&str, ShortcodeFn>) -> String {
+    pub fn render(&self, codes: &[(&str, ShortcodeFn)]) -> String {
         self.items.iter().map(|code| code.render(codes)).collect()
     }
 }
@@ -55,6 +54,6 @@ mod tests {
 
         let renderer = Renderer::new(&tokens);
 
-        assert_eq!(renderer.render(&HashMap::new()), "Hello world");
+        assert_eq!(renderer.render(&[]), "Hello world");
     }
 }

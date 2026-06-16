@@ -15,10 +15,10 @@
 //! assert_eq!(sc.render("[hello]"), "Hello, world!");
 //! ```
 
+use crate::attrs::ShortcodeAttrs;
 use crate::parser::Parser;
 use crate::renderer::Renderer;
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 /// Function signature for a shortcode handler.
 ///
@@ -26,30 +26,13 @@ use std::collections::HashMap;
 /// - `content`: Optional inner content between an opening and closing tag, e.g.
 ///   in `[name]inner[/name]` this would be `Some("inner")`. For self-closing
 ///   or attribute-only tags like `[name key="v"]` this will be `None`.
-/// - `attrs`: Map of attribute names to optional string values. An attribute may
-///   appear without a value (e.g., `[name flag]`), in which case the value is
-///   `None`. With a value (e.g., `[name key="v"]`) it will be `Some("v")`.
+/// - `attrs`: Attribute pairs available via `.get("key")` or `.iter()`.
+///   An attribute may appear without a value (e.g., `[name flag]`), in which
+///   case `.get("flag")` returns `Some(&None)`. With a value
+///   (e.g., `[name key="v"]`) it returns `Some(&Some("v"))`.
 ///
 /// Return value should be the rendered replacement string for the shortcode.
-///
-/// Example:
-/// ```rust
-/// use shortcode_parser::shortcode::Shortcode;
-/// use std::collections::HashMap; // only to show the signature type
-///
-/// let mut sc = Shortcode::new();
-/// sc.add("wrap", |content, attrs| {
-///     let left = attrs.get("left").and_then(|v| *v).unwrap_or("[");
-///     let right = attrs.get("right").and_then(|v| *v).unwrap_or("]");
-///     match content {
-///         Some(c) => format!("{left}{c}{right}"),
-///         None => String::new(),
-///     }
-/// });
-///
-/// assert_eq!(sc.render("[wrap left=\"<\" right=\">\"]hi[/wrap]"), "<hi>");
-/// ```
-pub type ShortcodeFn = fn(Option<&str>, HashMap<&str, Option<&str>>) -> String;
+pub type ShortcodeFn = fn(Option<&str>, ShortcodeAttrs) -> String;
 
 /// A registry of shortcode handlers keyed by their tag names.
 ///
@@ -68,7 +51,7 @@ pub type ShortcodeFn = fn(Option<&str>, HashMap<&str, Option<&str>>) -> String;
 /// ```
 #[derive(Debug)]
 pub struct Shortcode<'a> {
-    items: HashMap<&'a str, ShortcodeFn>,
+    items: Vec<(&'a str, ShortcodeFn)>,
 }
 
 impl<'a> Default for Shortcode<'a> {
@@ -90,9 +73,7 @@ impl<'a> Shortcode<'a> {
     /// assert_eq!(sc.render("plain"), "plain");
     /// ```
     pub fn new() -> Self {
-        Self {
-            items: HashMap::new(),
-        }
+        Self { items: vec![] }
     }
 
     /// Registers a handler function under the given shortcode `name`.
@@ -107,7 +88,7 @@ impl<'a> Shortcode<'a> {
     /// assert_eq!(sc.render("[upper]hi[/upper]"), "HI");
     /// ```
     pub fn add(&mut self, name: &'a str, func: ShortcodeFn) {
-        self.items.insert(name, func);
+        self.items.push((name, func));
     }
 
     /// Returns `true` if a handler is registered under `name`.
@@ -120,20 +101,20 @@ impl<'a> Shortcode<'a> {
     /// assert!(!sc.has("y"));
     /// ```
     pub fn has(&self, name: &str) -> bool {
-        self.items.contains_key(name)
+        self.items.iter().any(|(n, _)| *n == name)
     }
 
     /// Retrieves the handler function registered under `name`, if any.
     ///
     /// ```rust
-    /// use shortcode_parser::shortcode::Shortcode;
+    /// use shortcode_parser::{shortcode::Shortcode, ShortcodeAttrs};
     /// let mut sc = Shortcode::new();
     /// sc.add("ping", |_, _| "pong".to_string());
     /// let f = sc.get("ping").expect("handler");
-    /// assert_eq!(f(None, std::collections::HashMap::new()), "pong");
+    /// assert_eq!(f(None, ShortcodeAttrs::new(&[])), "pong");
     /// ```
     pub fn get(&self, name: &str) -> Option<&ShortcodeFn> {
-        self.items.get(name)
+        self.items.iter().find(|(n, _)| *n == name).map(|(_, f)| f)
     }
 
     /// Parses `content` and renders it by replacing all registered shortcodes.
@@ -148,7 +129,7 @@ impl<'a> Shortcode<'a> {
     /// use shortcode_parser::shortcode::Shortcode;
     /// let mut sc = Shortcode::new();
     /// sc.add("greet", |_, attrs| {
-    ///     let name = attrs.get("name").and_then(|v| *v).unwrap_or("world");
+    ///     let name = attrs.get("name").unwrap_or("world");
     ///     format!("Hello, {name}")
     /// });
     ///
@@ -194,7 +175,8 @@ mod tests {
     fn test_shortcode_with_attr() {
         let mut shortcode = Shortcode::new();
         shortcode.add("test", |_, attrs| {
-            format!("T {} T", attrs.get("name").unwrap().unwrap())
+            let val = attrs.get("name").unwrap();
+            format!("T {val} T")
         });
         assert_eq!(
             shortcode.render("[test name=\"hello world\"]"),
@@ -234,10 +216,12 @@ mod tests {
     fn test_multiple_shortcodes_with_attr() {
         let mut shortcode = Shortcode::new();
         shortcode.add("test", |_, attrs| {
-            format!("T {} T", attrs.get("name").unwrap().unwrap())
+            let val = attrs.get("name").unwrap();
+            format!("T {val} T")
         });
         shortcode.add("test2", |_, attrs| {
-            format!("T {} T", attrs.get("name").unwrap().unwrap())
+            let val = attrs.get("name").unwrap();
+            format!("T {val} T")
         });
         assert_eq!(
             shortcode.render("[test name=\"hello world\"] [test2 name=\"hello world 2\"]"),

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[derive(Debug, PartialEq)]
 pub enum Token<'a> {
     Text(&'a str),
@@ -43,12 +41,10 @@ impl<'a> Token<'a> {
             .join(" ")
     }
 
-    pub fn get_attr_map(&self) -> HashMap<&str, Option<&str>> {
+    pub fn attrs_slice(&self) -> &[(&str, Option<&str>)] {
         match self {
-            Token::SelfCloseAttr(_, attrs) => {
-                attrs.iter().map(|(name, value)| (*name, *value)).collect()
-            }
-            _ => HashMap::new(),
+            Token::SelfCloseAttr(_, attrs) => attrs,
+            _ => &[],
         }
     }
 }
