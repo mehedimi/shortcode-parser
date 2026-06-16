@@ -74,4 +74,63 @@ mod tests {
         assert_eq!(pairs[1], &("b", None));
         assert_eq!(pairs[2], &("c", Some("3")));
     }
+
+    #[test]
+    fn test_get_empty_key() {
+        let attrs = ShortcodeAttrs::new(&[("", Some("value"))]);
+        assert_eq!(attrs.get(""), Some("value"));
+    }
+
+    #[test]
+    fn test_get_duplicate_keys() {
+        let attrs = ShortcodeAttrs::new(&[("id", Some("1")), ("id", Some("2"))]);
+        assert_eq!(attrs.get("id"), Some("1"));
+    }
+
+    #[test]
+    fn test_get_case_sensitive() {
+        let attrs = ShortcodeAttrs::new(&[("ID", Some("1"))]);
+        assert_eq!(attrs.get("id"), None);
+        assert_eq!(attrs.get("ID"), Some("1"));
+    }
+
+    #[test]
+    fn test_iter_single_flag() {
+        let attrs = ShortcodeAttrs::new(&[("autoplay", None)]);
+        let pairs: Vec<_> = attrs.iter().collect();
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0], &("autoplay", None));
+    }
+
+    #[test]
+    fn test_iter_single_value() {
+        let attrs = ShortcodeAttrs::new(&[("id", Some("123"))]);
+        let pairs: Vec<_> = attrs.iter().collect();
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0], &("id", Some("123")));
+    }
+
+    #[test]
+    fn test_get_unicode_value() {
+        let attrs = ShortcodeAttrs::new(&[("name", Some("世界"))]);
+        assert_eq!(attrs.get("name"), Some("世界"));
+    }
+
+    #[test]
+    fn test_get_empty_string_value() {
+        let attrs = ShortcodeAttrs::new(&[("id", Some(""))]);
+        assert_eq!(attrs.get("id"), Some(""));
+    }
+
+    #[test]
+    fn test_get_equals_in_value() {
+        let attrs = ShortcodeAttrs::new(&[("url", Some("a=b&c=d"))]);
+        assert_eq!(attrs.get("url"), Some("a=b&c=d"));
+    }
+
+    #[test]
+    fn test_get_ampersand_in_value() {
+        let attrs = ShortcodeAttrs::new(&[("src", Some("a&b"))]);
+        assert_eq!(attrs.get("src"), Some("a&b"));
+    }
 }
