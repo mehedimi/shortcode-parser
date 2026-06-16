@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 #[derive(Debug, PartialEq)]
 pub enum Token<'a> {
     Text(&'a str),
@@ -16,18 +18,18 @@ impl<'a> Token<'a> {
         }
     }
 
-    pub fn render_raw(&self) -> String {
+    pub fn render_raw(&self) -> Cow<'a, str> {
         match self {
-            Token::Text(text) => text.to_string(),
-            Token::SelfClose(name) => format!("[{}]", name),
-            Token::CloseTag(name) => format!("[/{}]", name),
+            Token::Text(text) => Cow::Borrowed(text),
+            Token::SelfClose(name) => Cow::Owned(format!("[{}]", name)),
+            Token::CloseTag(name) => Cow::Owned(format!("[/{}]", name)),
             Token::SelfCloseAttr(name, attrs) => {
-                format!("[{} {}]", name, Token::attrs_to_string(attrs))
+                Cow::Owned(format!("[{} {}]", name, Token::attrs_to_string(attrs)))
             }
         }
     }
 
-    pub fn attrs_to_string(attrs: &Vec<(&str, Option<&str>)>) -> String {
+    pub fn attrs_to_string(attrs: &[(&str, Option<&str>)]) -> String {
         attrs
             .iter()
             .map(|(name, value)| {

@@ -22,10 +22,13 @@ pub struct ShortcodeAttrs<'a>(&'a [(&'a str, Option<&'a str>)]);
 impl<'a> ShortcodeAttrs<'a> {
     /// Looks up an attribute by name. Returns `Some(&str)` if present with a value, `None` otherwise.
     pub fn get(&self, name: &str) -> Option<&'a str> {
-        self.0.iter().find(|(k, _)| *k == name).and_then(|(_, v)| *v)
+        self.0
+            .iter()
+            .find(|(k, _)| *k == name)
+            .and_then(|(_, v)| *v)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &( &'a str, Option<&'a str>)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(&'a str, Option<&'a str>)> {
         self.0.iter()
     }
 
@@ -64,11 +67,7 @@ mod tests {
 
     #[test]
     fn test_iter() {
-        let attrs = ShortcodeAttrs::new(&[
-            ("a", Some("1")),
-            ("b", None),
-            ("c", Some("3")),
-        ]);
+        let attrs = ShortcodeAttrs::new(&[("a", Some("1")), ("b", None), ("c", Some("3"))]);
         let pairs: Vec<_> = attrs.iter().collect();
         assert_eq!(pairs.len(), 3);
         assert_eq!(pairs[0], &("a", Some("1")));

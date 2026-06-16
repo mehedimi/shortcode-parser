@@ -9,11 +9,7 @@ pub enum Code<'a> {
 }
 
 impl<'a> Code<'a> {
-    fn render_children(
-        &self,
-        shortcodes: &[(&str, ShortcodeFn)],
-        children: &[Code<'a>],
-    ) -> String {
+    fn render_children(&self, shortcodes: &[(&str, ShortcodeFn)], children: &[Code<'a>]) -> String {
         children
             .iter()
             .map(|code| code.render(shortcodes))
@@ -24,7 +20,10 @@ impl<'a> Code<'a> {
         shortcodes: &'b [(&str, ShortcodeFn)],
         code_name: &str,
     ) -> Option<&'b ShortcodeFn> {
-        shortcodes.iter().find(|(name, _)| *name == code_name).map(|(_, f)| f)
+        shortcodes
+            .iter()
+            .find(|(name, _)| *name == code_name)
+            .map(|(_, f)| f)
     }
 
     pub fn render(&self, shortcodes: &[(&str, ShortcodeFn)]) -> String {
@@ -34,10 +33,10 @@ impl<'a> Code<'a> {
                     if let Some(code_fn) = Self::lookup_handler(shortcodes, code_name) {
                         code_fn(None, ShortcodeAttrs::new(token.attrs_slice()))
                     } else {
-                        token.render_raw()
+                        token.render_raw().into_owned()
                     }
                 } else {
-                    token.render_raw()
+                    token.render_raw().into_owned()
                 }
             }
             Code::Nested(token, children) => {
@@ -52,11 +51,11 @@ impl<'a> Code<'a> {
                             "{}{}{}",
                             token.render_raw(),
                             self.render_children(shortcodes, children),
-                            Token::CloseTag(code_name).render_raw()
+                            Token::CloseTag(code_name).render_raw(),
                         )
                     }
                 } else {
-                    token.render_raw()
+                    token.render_raw().into_owned()
                 }
             }
         }
