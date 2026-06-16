@@ -174,7 +174,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if self.pos == 0 {
+        if self.tokens.is_empty() {
+            self.tokens.push(Token::Text(&self.content[self.pos..]));
+        } else if self.pos < self.content.len() {
             self.tokens.push(Token::Text(&self.content[self.pos..]));
         }
 

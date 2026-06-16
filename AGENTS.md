@@ -31,7 +31,6 @@ Flow: `Shortcode::render()` → `Parser::parse()` → `Renderer::new()` → `Ren
 
 ## Gotchas
 
-- `Renderer::render()` at `src/renderer.rs:44` contains an unreleased `dbg!(&self.items)` — it prints to stderr on every render. Remove before shipping.
 - `Parser::parse()` returns `&Vec<Token>` borrowing from `self`. The caller must keep the `Parser` alive. Currently fine because `Parser` is created inline in `Shortcode::render()`.
 - `.gitignore` excludes `Cargo.lock`. Unusual for a library but intentional.
 - Unknown shortcodes are left as-is in output (rendered raw). No built-in strip/ignore policy.
