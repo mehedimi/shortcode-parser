@@ -9,6 +9,13 @@ pub enum Code<'a> {
 }
 
 impl<'a> Code<'a> {
+    /// Returns the tag name of this code node, if it represents a shortcode tag.
+    pub(crate) fn tag_name(&self) -> Option<&str> {
+        match self {
+            Code::Inline(token) | Code::Nested(token, _) => token.tag_name(),
+        }
+    }
+
     fn lookup_handler<'b>(
         shortcodes: &'b [(&str, ShortcodeFn)],
         code_name: &str,
