@@ -1,35 +1,63 @@
+use crate::tokenizer::{TokenSegment, Tokenizer};
 use crate::token::Token;
 
-/// Char-by-char shortcode tokenizer that works on raw bytes for performance.
+/// Interprets raw token segments into `Token` enum values.
 ///
-/// Avoids `str::chars()` (Unicode decoding) by operating on `&[u8]`.
-/// Shortcode tag names and attributes are validated ASCII, so we can safely
-/// transmute byte slices to `&str` with `from_utf8_unchecked`.
+/// Handles tag name extraction (including `/` prefix for close tags)
+/// and attribute parsing (`key="value" flag` format).
 pub struct Parser<'a> {
-    content: &'a str,
-    bytes: &'a [u8],
-    tokens: Vec<Token<'a>>,
+    segments: Vec<TokenSegment<'a>>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(content: &'a str) -> Self {
-        Self {
-            content,
-            bytes: content.as_bytes(),
-            tokens: vec![],
+        let segments = Tokenizer::new(content).tokenize();
+        Self { segments }
+    }
+
+    /// Interpret all segments and return the token list.
+    pub fn parse(&self) -> Vec<Token<'a>> {
+        self.segments.iter().map(|seg| self.interpret(seg)).collect()
+    }
+
+    /// Interpret a single raw segment into a `Token`.
+    fn interpret(&self, segment: &TokenSegment<'a>) -> Token<'a> {
+        match segment {
+            TokenSegment::Text(text) => Token::Text(text),
+            TokenSegment::Tag(raw) => self.parse_tag(raw),
         }
     }
 
-    /// Advance past consecutive space bytes, returning the new position.
-    fn skip_whitespace(&self, pos: usize) -> usize {
-        let mut i = pos;
-        while let Some(&b' ') = self.bytes.get(i) {
-            i += 1;
+    /// Interpret a raw tag byte slice into the appropriate `Token` variant.
+    ///
+    /// The slice is the content between `[` and `]` (brackets excluded).
+    /// - If it contains a space, the part before the space is the tag name
+    ///   and the rest is parsed as attributes.
+    /// - If it contains no space and starts with `/`, it's a close tag.
+    /// - Otherwise it's a self-closing tag.
+    fn parse_tag(&self, raw: &'a [u8]) -> Token<'a> {
+        // Find the first space to separate tag name from attributes.
+        let space_pos = raw.iter().position(|&b| b == b' ');
+
+        if let Some(pos) = space_pos {
+            // Tag has attributes.
+            let name = unsafe { std::str::from_utf8_unchecked(&raw[..pos]) };
+            let attr_bytes = &raw[pos + 1..];
+            let attrs = self.parse_attr_value(attr_bytes);
+            Token::SelfCloseAttr(name, attrs)
+        } else {
+            // No attributes — check if it's a close tag.
+            // SAFETY: raw is a subslice of valid UTF-8 content.
+            let name = unsafe { std::str::from_utf8_unchecked(raw) };
+            if let Some(tag_name) = name.strip_prefix('/') {
+                Token::CloseTag(tag_name)
+            } else {
+                Token::SelfClose(name)
+            }
         }
-        i
     }
 
-    /// Parse attribute name/value pairs from the byte slice between tag name and `]`.
+    /// Parse attribute name/value pairs from raw bytes.
     ///
     /// Format: `key="value" flag key2="value2"`
     /// Returns empty vec for whitespace-only input.
@@ -54,7 +82,7 @@ impl<'a> Parser<'a> {
                     pos = i + 1;
                     i += 1;
                 }
-                // `key=value` or `key=` (value starts next)
+                // `key=value` — parse until quote or next space.
                 b'=' => {
                     // SAFETY: Same invariant — attr_str is a subslice of valid UTF-8.
                     let name = unsafe { std::str::from_utf8_unchecked(&attr_str[pos..i]) };
@@ -74,7 +102,8 @@ impl<'a> Parser<'a> {
                         }
                         if i < len {
                             // SAFETY: Quoted values are subslices of valid UTF-8 content.
-                            let value = unsafe { std::str::from_utf8_unchecked(&attr_str[pos..i]) };
+                            let value =
+                                unsafe { std::str::from_utf8_unchecked(&attr_str[pos..i]) };
                             attrs.push((name, Some(value)));
                         }
                         i += 1; // Skip closing quote
@@ -99,104 +128,6 @@ impl<'a> Parser<'a> {
 
         attrs
     }
-
-    /// Parse a single shortcode tag starting at `tag_start` (after `[`).
-    ///
-    /// Returns `Some(pos)` with the byte position after the closing `]`,
-    /// or `None` if no `]` is found (unclosed tag treated as raw text).
-    /// Pushes the parsed token only when a closing `]` is found.
-    fn parse_shortcode(&mut self, tag_start: usize) -> Option<usize> {
-        let mut pos = tag_start;
-
-        while pos < self.bytes.len() {
-            match self.bytes[pos] {
-                // Space after tag name means attributes follow.
-                b' ' => {
-                    // SAFETY: tag bytes are a subslice of valid UTF-8 content.
-                    let name =
-                        unsafe { std::str::from_utf8_unchecked(&self.bytes[tag_start..pos]) };
-                    pos += 1;
-                    pos = self.skip_whitespace(pos);
-                    let attrs_start = pos;
-                    // Scan to closing `]` for attributes.
-                    while pos < self.bytes.len() && self.bytes[pos] != b']' {
-                        pos += 1;
-                    }
-                    if pos < self.bytes.len() {
-                        let attrs = self.parse_attr_value(&self.bytes[attrs_start..pos]);
-                        self.tokens.push(Token::SelfCloseAttr(name, attrs));
-                        return Some(pos + 1); // Skip `]`
-                    } else {
-                        return None; // No closing `]` found
-                    }
-                }
-                // Closing bracket — tag is complete.
-                b']' => {
-                    // SAFETY: Same invariant.
-                    let name =
-                        unsafe { std::str::from_utf8_unchecked(&self.bytes[tag_start..pos]) };
-                    if let Some(rest) = name.strip_prefix('/') {
-                        self.tokens.push(Token::CloseTag(rest));
-                    } else {
-                        self.tokens.push(Token::SelfClose(name));
-                    }
-                    return Some(pos + 1);
-                }
-                // Advance to next byte
-                _ => {
-                    pos += 1;
-                }
-            }
-        }
-
-        None // Reached end of content without finding `]`
-    }
-
-    /// Tokenize the full input into a flat list of `Token`s.
-    ///
-    /// Walks the input byte-by-byte looking for `[`. When found, delegates
-    /// to `parse_shortcode` which scans to the matching `]`.
-    /// If no `]` is found, the unclosed `[` and everything after it is
-    /// treated as raw text.
-    pub fn parse(&mut self) -> &Vec<Token<'a>> {
-        let mut text_start = 0;
-        let mut pos = 0;
-        let total_len = self.bytes.len();
-
-        while pos < total_len {
-            if self.bytes[pos] == b'[' {
-                // Push text before this tag (if any).
-                if text_start < pos {
-                    self.tokens
-                        .push(Token::Text(&self.content[text_start..pos]));
-                }
-                // Try to parse the shortcode tag.
-                if let Some(end_pos) = self.parse_shortcode(pos + 1) {
-                    // Found closing `]`, continue parsing after it.
-                    pos = end_pos;
-                    text_start = pos;
-                } else {
-                    // No closing `]` found — treat the unclosed `[` as raw text.
-                    self.tokens
-                        .push(Token::Text(&self.content[pos..total_len]));
-                    text_start = total_len;
-                    break;
-                }
-            } else {
-                pos += 1;
-            }
-        }
-
-        // If no tags were found, the entire input is a single text token.
-        if self.tokens.is_empty() {
-            self.tokens.push(Token::Text(&self.content[text_start..]));
-        // Otherwise push any trailing text after the last tag.
-        } else if text_start < total_len {
-            self.tokens.push(Token::Text(&self.content[text_start..]));
-        }
-
-        &self.tokens
-    }
 }
 
 #[cfg(test)]
@@ -204,8 +135,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_empty_content() {
-        let mut parser = Parser::new("");
+    fn test_parse_empty() {
+        let parser = Parser::new("");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0], Token::Text(""));
@@ -213,15 +144,15 @@ mod tests {
 
     #[test]
     fn test_parse_without_shortcode() {
-        let mut parser = Parser::new("Hello world");
+        let parser = Parser::new("Hello world");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0], Token::Text("Hello world"));
     }
 
     #[test]
-    fn test_parse_self_close_shortcode() {
-        let mut parser = Parser::new("New [shortcode]");
+    fn test_parse_self_close() {
+        let parser = Parser::new("New [shortcode]");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("New "));
@@ -229,9 +160,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_self_close_shortcode_with_attr() {
-        let mut parser = Parser::new("New [video autoplay loop]");
-
+    fn test_parse_self_close_with_attr() {
+        let parser = Parser::new("New [video autoplay loop]");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("New "));
@@ -240,7 +170,7 @@ mod tests {
             Token::SelfCloseAttr("video", vec![("autoplay", None), ("loop", None)])
         );
 
-        let mut parser = Parser::new("New [video id=\"123\"]");
+        let parser = Parser::new("New [video id=\"123\"]");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("New "));
@@ -251,8 +181,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_self_close_shortcode_with_attrs() {
-        let mut parser = Parser::new("New [video id=\"123\" autoplay loop name=\"hello world\"]");
+    fn test_parse_self_close_with_attrs() {
+        let parser = Parser::new("New [video id=\"123\" autoplay loop name=\"hello world\"]");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("New "));
@@ -271,12 +201,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_multiple_self_close_shortcodes_with_attrs_and_spaces() {
-        let mut parser = Parser::new(
+    fn test_parse_multiple() {
+        let parser = Parser::new(
             "New [video id=\"123\" autoplay loop name=\"hello world\"] [audio] [video][test]",
         );
         let tokens = parser.parse();
-        // 7 tokens: no empty Text("") between adjacent tags.
         assert_eq!(tokens.len(), 7);
         assert_eq!(tokens[0], Token::Text("New "));
         assert_eq!(
@@ -299,8 +228,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_enclosed_shortcode() {
-        let mut parser = Parser::new("New [bold]Word[/bold]");
+    fn test_parse_enclosed() {
+        let parser = Parser::new("New [bold]Word[/bold]");
         let tokens = parser.parse();
 
         assert_eq!(tokens.len(), 4);
@@ -312,9 +241,8 @@ mod tests {
 
     #[test]
     fn test_parse_unclosed_tag() {
-        let mut parser = Parser::new("Hello [unclosed");
+        let parser = Parser::new("Hello [unclosed");
         let tokens = parser.parse();
-        // Preceding text + unclosed tag as separate text tokens.
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("Hello "));
         assert_eq!(tokens[1], Token::Text("[unclosed"));
@@ -322,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_parse_unclosed_tag_with_attr() {
-        let mut parser = Parser::new("Hello [video id=\"123");
+        let parser = Parser::new("Hello [video id=\"123");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0], Token::Text("Hello "));
@@ -331,10 +259,10 @@ mod tests {
 
     #[test]
     fn test_parse_unclosed_tag_followed_by_valid() {
+        let parser = Parser::new("[unclosed [valid]");
+        let tokens = parser.parse();
         // `[unclosed ` triggers attribute parsing, `[valid` becomes an attr name,
         // and the final `]` closes the tag. This is correct for a lenient parser.
-        let mut parser = Parser::new("[unclosed [valid]");
-        let tokens = parser.parse();
         assert_eq!(tokens.len(), 1);
         assert_eq!(
             tokens[0],
@@ -344,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_parse_valid_then_unclosed() {
-        let mut parser = Parser::new("[valid] text [unclosed");
+        let parser = Parser::new("[valid] text [unclosed");
         let tokens = parser.parse();
         assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0], Token::SelfClose("valid"));

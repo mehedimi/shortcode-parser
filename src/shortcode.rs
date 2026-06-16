@@ -137,7 +137,7 @@ impl<'a> Shortcode<'a> {
     /// assert_eq!(sc.render("plain text"), "plain text");
     /// ```
     pub fn render<'b>(&self, content: &'b str) -> Cow<'b, str> {
-        let mut parser = Parser::new(content);
+        let parser = Parser::new(content);
         let tokens = parser.parse();
 
         // Only one token and it's not a tag
@@ -145,7 +145,7 @@ impl<'a> Shortcode<'a> {
             return Cow::Borrowed(content);
         }
 
-        Cow::Owned(Renderer::new(tokens).render(&self.items))
+        Cow::Owned(Renderer::new(&tokens).render(&self.items))
     }
 }
 
