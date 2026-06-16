@@ -27,9 +27,9 @@ use std::borrow::Cow;
 ///   in `[name]inner[/name]` this would be `Some("inner")`. For self-closing
 ///   or attribute-only tags like `[name key="v"]` this will be `None`.
 /// - `attrs`: Attribute pairs available via `.get("key")` or `.iter()`.
-///   An attribute may appear without a value (e.g., `[name flag]`), in which
-///   case `.get("flag")` returns `Some(&None)`. With a value
-///   (e.g., `[name key="v"]`) it returns `Some(&Some("v"))`.
+///   An attribute without a value (e.g., `[name flag]`) returns `None` from
+///   `.get("flag")`. With a value (e.g., `[name key="v"]`) it returns
+///   `Some("v")`.
 ///
 /// Return value should be the rendered replacement string for the shortcode.
 pub type ShortcodeFn = fn(Option<&str>, ShortcodeAttrs) -> String;
