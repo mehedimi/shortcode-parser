@@ -9,13 +9,6 @@ pub enum Code<'a> {
 }
 
 impl<'a> Code<'a> {
-    fn render_children(&self, shortcodes: &[(&str, ShortcodeFn)], children: &[Code<'a>]) -> String {
-        children
-            .iter()
-            .map(|code| code.render(shortcodes))
-            .collect()
-    }
-
     fn lookup_handler<'b>(
         shortcodes: &'b [(&str, ShortcodeFn)],
         code_name: &str,
@@ -41,16 +34,21 @@ impl<'a> Code<'a> {
             }
             Code::Nested(token, children) => {
                 if let Some(code_name) = token.tag_name() {
+                    let rendered_children = children
+                        .iter()
+                        .map(|code| code.render(shortcodes))
+                        .collect::<String>();
+
                     if let Some(code_fn) = Self::lookup_handler(shortcodes, code_name) {
                         code_fn(
-                            Some(self.render_children(shortcodes, children).as_str()),
+                            Some(rendered_children.as_str()),
                             ShortcodeAttrs::new(token.attrs_slice()),
                         )
                     } else {
                         format!(
                             "{}{}{}",
                             token.render_raw(),
-                            self.render_children(shortcodes, children),
+                            rendered_children,
                             Token::CloseTag(code_name).render_raw(),
                         )
                     }

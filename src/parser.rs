@@ -1,9 +1,13 @@
 use crate::token::Token;
-use std::str::Chars;
 
+/// Char-by-char shortcode tokenizer that works on raw bytes for performance.
+///
+/// Avoids `str::chars()` (Unicode decoding) by operating on `&[u8]`.
+/// Shortcode tag names and attributes are validated ASCII, so we can safely
+/// transmute byte slices to `&str` with `from_utf8_unchecked`.
 pub struct Parser<'a> {
     content: &'a str,
-    pos: usize,
+    bytes: &'a [u8],
     tokens: Vec<Token<'a>>,
 }
 
@@ -11,173 +15,169 @@ impl<'a> Parser<'a> {
     pub fn new(content: &'a str) -> Self {
         Self {
             content,
-            pos: 0,
+            bytes: content.as_bytes(),
             tokens: vec![],
         }
     }
 
-    fn get_attr_end_range(&self, iter: &mut Chars, quote: Option<char>, i: &mut usize) -> usize {
-        loop {
-            let c = iter.next();
-
-            if c.is_none() {
-                return *i;
-            }
-
-            if c == quote {
-                return *i;
-            }
-
-            *i += 1;
+    /// Advance past consecutive space bytes, returning the new position.
+    fn skip_whitespace(&self, pos: usize) -> usize {
+        let mut i = pos;
+        while let Some(&b' ') = self.bytes.get(i) {
+            i += 1;
         }
+        i
     }
 
-    fn parse_attr_value(&mut self, attr_str: &'a str) -> Vec<(&'a str, Option<&'a str>)> {
+    /// Parse attribute name/value pairs from the byte slice between tag name and `]`.
+    ///
+    /// Format: `key="value" flag key2="value2"`
+    /// Returns empty vec for whitespace-only input.
+    fn parse_attr_value(&self, attr_str: &'a [u8]) -> Vec<(&'a str, Option<&'a str>)> {
         let mut attrs = vec![];
-        let mut iter = attr_str.chars();
         let mut pos = 0;
         let mut i = 0;
+        let len = attr_str.len();
 
-        loop {
-            let c = iter.next();
-
-            match c {
-                Some(' ') => {
-                    if pos == i {
-                        pos += 1;
-                        i += 1;
-                        continue;
+        while i < len {
+            match attr_str[i] {
+                // Space separates attributes. Push the name collected since `pos`.
+                b' ' => {
+                    if pos != i {
+                        // SAFETY: `attr_str` is a subslice of valid UTF-8 content.
+                        // Attribute names in shortcodes are ASCII identifiers.
+                        attrs.push((
+                            unsafe { std::str::from_utf8_unchecked(&attr_str[pos..i]) },
+                            None,
+                        ));
                     }
-                    attrs.push((&attr_str[pos..i], None));
                     pos = i + 1;
                     i += 1;
                 }
-                Some('=') => {
-                    let name = &attr_str[pos..i];
+                // `key=value` or `key=` (value starts next)
+                b'=' => {
+                    // SAFETY: Same invariant — attr_str is a subslice of valid UTF-8.
+                    let name = unsafe { std::str::from_utf8_unchecked(&attr_str[pos..i]) };
+                    i += 1;
 
-                    i += 2;
-                    pos = i;
-
-                    loop {
-                        let a = iter.next();
-
-                        match a {
-                            Some('"') | Some('\'') => {
-                                let value =
-                                    &attr_str[pos..self.get_attr_end_range(&mut iter, a, &mut i)];
-                                attrs.push((name, Some(value)));
-
-                                i += 1;
-                                pos = i;
-
-                                break;
-                            }
-                            None => break,
-                            _ => {
-                                i += 1;
-                            }
+                    // Skip any whitespace between `=` and the opening quote.
+                    while i < len && attr_str[i] != b'"' && attr_str[i] != b'\'' {
+                        i += 1;
+                    }
+                    // Found opening quote — parse until closing quote.
+                    if i < len {
+                        let quote = attr_str[i];
+                        i += 1;
+                        pos = i;
+                        while i < len && attr_str[i] != quote {
+                            i += 1;
                         }
+                        if i < len {
+                            // SAFETY: Quoted values are subslices of valid UTF-8 content.
+                            let value = unsafe { std::str::from_utf8_unchecked(&attr_str[pos..i]) };
+                            attrs.push((name, Some(value)));
+                        }
+                        i += 1; // Skip closing quote
+                        pos = i;
                     }
                 }
-                None => break,
+                // Advance to next byte
                 _ => {
                     i += 1;
                 }
             }
         }
 
-        if pos != i {
-            attrs.push((&attr_str[pos..], None));
+        // Push trailing name without value (e.g., `flag` at end: `[tag flag]`)
+        if pos < len {
+            // SAFETY: Same invariant.
+            attrs.push((
+                unsafe { std::str::from_utf8_unchecked(&attr_str[pos..]) },
+                None,
+            ));
         }
 
         attrs
     }
 
-    fn parse_attrs(&mut self, char_iter: &mut Chars) -> Vec<(&'a str, Option<&'a str>)> {
-        let mut attrs = vec![];
-        let mut i = self.pos;
-        loop {
-            let c = char_iter.next();
+    /// Parse a single shortcode tag starting at `tag_start` (after `[`).
+    ///
+    /// Returns the byte position after the closing `]` (or end of content
+    /// if `]` is missing). Pushes the parsed token and updates `self.pos`.
+    fn parse_shortcode(&mut self, tag_start: usize) -> usize {
+        let mut pos = tag_start;
 
-            match c {
-                Some(']') => {
-                    attrs = self.parse_attr_value(&self.content[self.pos..i]);
-                    i += 1;
-                    self.pos = i;
-                    break;
-                }
-                None => break,
-                _ => {
-                    i += 1;
-                }
-            }
-        }
-
-        attrs
-    }
-
-    fn parse_shortcode(&mut self, char_iter: &mut Chars) {
-        let mut i = self.pos;
-
-        loop {
-            let c = char_iter.next();
-
-            match c {
-                Some(' ') => {
-                    let name = &self.content[self.pos..i];
-                    // Increment position to skip the space
-                    i += 1;
-                    self.pos = i;
-                    let attrs = self.parse_attrs(char_iter);
+        while pos < self.bytes.len() {
+            match self.bytes[pos] {
+                // Space after tag name means attributes follow.
+                b' ' => {
+                    // SAFETY: tag bytes are a subslice of valid UTF-8 content.
+                    let name =
+                        unsafe { std::str::from_utf8_unchecked(&self.bytes[tag_start..pos]) };
+                    pos += 1;
+                    pos = self.skip_whitespace(pos);
+                    let attrs_start = pos;
+                    // Scan to closing `]` for attributes.
+                    while pos < self.bytes.len() && self.bytes[pos] != b']' {
+                        pos += 1;
+                    }
+                    let attrs = self.parse_attr_value(&self.bytes[attrs_start..pos]);
                     self.tokens.push(Token::SelfCloseAttr(name, attrs));
+                    if pos < self.bytes.len() {
+                        pos += 1; // Skip `]`
+                    }
                     break;
                 }
-                Some(']') => {
-                    let name = &self.content[self.pos..i];
-
-                    if let Some(name) = name.strip_prefix('/') {
-                        self.tokens.push(Token::CloseTag(name));
+                // Closing bracket — tag is complete.
+                b']' => {
+                    // SAFETY: Same invariant.
+                    let name =
+                        unsafe { std::str::from_utf8_unchecked(&self.bytes[tag_start..pos]) };
+                    pos += 1;
+                    if let Some(rest) = name.strip_prefix('/') {
+                        self.tokens.push(Token::CloseTag(rest));
                     } else {
                         self.tokens.push(Token::SelfClose(name));
                     }
-
-                    self.pos = i + 1;
                     break;
                 }
-                None => break,
+                // Advance to next byte
                 _ => {
-                    i += 1;
+                    pos += 1;
                 }
             }
         }
+
+        pos
     }
 
+    /// Tokenize the full input into a flat list of `Token`s.
+    ///
+    /// Walks the input byte-by-byte looking for `[`. When found, delegates
+    /// to `parse_shortcode` which scans to the matching `]`.
     pub fn parse(&mut self) -> &Vec<Token<'a>> {
-        let mut iter = self.content.chars();
-        let mut i = 0;
+        let mut text_start = 0;
+        let mut pos = 0;
+        let total_len = self.bytes.len();
 
-        loop {
-            let c = iter.next();
-            match c {
-                Some('[') => {
-                    self.tokens.push(Token::Text(&self.content[self.pos..i]));
-                    i += 1;
-                    // Set position start of the shortcode tag
-                    self.pos = i;
-                    self.parse_shortcode(&mut iter);
-                    i = self.pos;
-                }
-                None => break,
-                _ => {
-                    i += 1;
-                }
+        while pos < total_len {
+            if self.bytes[pos] == b'[' {
+                // Push text before this tag.
+                self.tokens
+                    .push(Token::Text(&self.content[text_start..pos]));
+                pos = self.parse_shortcode(pos + 1);
+                text_start = pos;
+            } else {
+                pos += 1;
             }
         }
 
+        // If no tags were found, the entire input is a single text token.
         if self.tokens.is_empty() {
-            self.tokens.push(Token::Text(&self.content[self.pos..]));
-        } else if self.pos < self.content.len() {
-            self.tokens.push(Token::Text(&self.content[self.pos..]));
+            self.tokens.push(Token::Text(&self.content[text_start..]));
+        // Otherwise push any trailing text after the last tag.
+        } else if text_start < total_len {
+            self.tokens.push(Token::Text(&self.content[text_start..]));
         }
 
         &self.tokens
